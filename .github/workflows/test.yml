@@ -102,13 +102,21 @@ jobs:
             -o arch/arm64/configs/polaris_defconfig
 
       # ========== 源码快速修复 ==========
+      # ========== 修复 fair.c 中的 cumulative_runnable_avg 错误及未使用变量 ==========
       - name: 修复 fair.c 中不存在的 cumulative_runnable_avg 成员
         working-directory: kernel
         run: |
-          # 将包含 cumulative_runnable_avg 的 fixup_cumulative_runnable_avg(...); 调用整体注释掉
-          perl -i -0777 -pe 's/fixup_cumulative_runnable_avg\s*\([^;)]*cumulative_runnable_avg[^;]*\)\s*;/\/\* fixup_cumulative_runnable_avg call removed \*\//g' kernel/sched/fair.c
-          # 注释掉直接的赋值语句 cfs_rq->cumulative_runnable_avg += ...
-          sed -i '/cumulative_runnable_avg\s*+=/s/^/\t\/\//' kernel/sched/fair.c
+          # 1. 注释掉所有 fixup_cumulative_runnable_avg( ... ) 调用 (可跨多行)
+          perl -0777 -pi -e 's/fixup_cumulative_runnable_avg\s*\(.*?\)\s*;/\/\* fixup_cumulative_runnable_avg call removed \*\//gs' kernel/sched/fair.c
+
+          # 2. 注释掉 cfs_rq->cumulative_runnable_avg += ... 的直接赋值语句
+          sed -i '/cfs_rq->cumulative_runnable_avg\s*+=/s/^/\t\/\//' kernel/sched/fair.c
+
+          # 3. 抑制因为上述注释而导致的未使用变量错误 (task_load_delta, pred_demand_delta)
+          sed -i '/s64 task_load_delta =/a\    (void)task_load_delta;' kernel/sched/fair.c
+          sed -i '/s64 pred_demand_delta =/a\    (void)pred_demand_delta;' kernel/sched/fair.c
+
+          echo "修复完成。所有 fixup_cumulative_runnable_avg 调用及相关赋值已注释。"
 
       # ========== Clang 工具链缓存与下载 ==========
       - name: 缓存 Clang 工具链
