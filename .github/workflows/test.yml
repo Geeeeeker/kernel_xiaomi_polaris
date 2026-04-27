@@ -94,8 +94,8 @@ jobs:
           ref: ${{ env.ANDROID_VERSION }}
           path: kernel
 
-      # ========== 覆盖为统一 defconfig (来自 fourteen-wip 分支) ==========
-      - name: 使用统一的 polaris_defconfig (基于 fourteen-wip)
+      # ========== 覆盖为统一 defconfig (来自 thirteen-wip 分支) ==========
+      - name: 使用统一的 polaris_defconfig (基于 thirteen-wip)
         working-directory: kernel
         run: |
           curl -LSs https://raw.githubusercontent.com/Geeeeeker/kernel_xiaomi_polaris/refs/heads/thirteen-wip/arch/arm64/configs/polaris_defconfig \
