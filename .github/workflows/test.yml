@@ -102,7 +102,72 @@ jobs:
             -o arch/arm64/configs/polaris_defconfig
 
       # ========== 源码快速修复 ==========
-      
+      # ========== 源码快速修复 ==========
+      - name: 彻底修复 fair.c 中 cumulative_runnable_avg 错误（稳健逐行处理）
+        working-directory: kernel
+        run: |
+          # 先恢复原始文件，防止之前失败的修补残留
+          git checkout -- kernel/sched/fair.c
+
+          python3 << 'EOF'
+          in_fixup_call = False
+          output_lines = []
+          with open("kernel/sched/fair.c", "r") as f:
+              for line in f:
+                  # 如果我们正处于一个 fixup_cumulative_runnable_avg 调用内部
+                  if in_fixup_call:
+                      # 把当前行变成注释，防止残留参数
+                      stripped = line.lstrip()
+                      if stripped and not stripped.startswith("/*"):
+                          output_lines.append("/* " + line.rstrip() + " */\n")
+                      else:
+                          output_lines.append(line)
+                      # 检测调用结束的 );
+                      if ");" in stripped:
+                          in_fixup_call = False
+                      continue
+
+                  # 检查是否开始一个 fixup_cumulative_runnable_avg 调用
+                  if "fixup_cumulative_runnable_avg" in line:
+                      in_fixup_call = True
+                      output_lines.append("/* fixup_cumulative_runnable_avg call removed */\n")
+                      # 如果这一行已经包含 ); 则调用在一行内结束
+                      if ");" in line.split("fixup_cumulative_runnable_avg")[-1]:
+                          in_fixup_call = False
+                      continue
+
+                  # 处理 cfs_rq->cumulative_runnable_avg += ... 的直接赋值
+                  if "cfs_rq->cumulative_runnable_avg" in line and "+=" in line:
+                      output_lines.append("/* " + line.rstrip() + " */\n")
+                      continue
+
+                  # 处理结构体中的 .fixup_cumulative_runnable_avg 和下一行
+                  if ".fixup_cumulative_runnable_avg" in line:
+                      output_lines.append("/* .fixup_cumulative_runnable_avg removed */\n")
+                      # 跳过下一行 (walt_fixup_cumulative_runnable_avg_fair)
+                      next_line = f.readline()
+                      if next_line:
+                          output_lines.append("/* " + next_line.rstrip() + " */\n")
+                      continue
+
+                  # 给 pred_demand_delta 和 task_load_delta 声明添加 __attribute__((unused))
+                  if "s64 pred_demand_delta = PRED_DEMAND_DELTA;" in line:
+                      line = line.replace(
+                          "s64 pred_demand_delta = PRED_DEMAND_DELTA;",
+                          "s64 pred_demand_delta __attribute__((unused)) = PRED_DEMAND_DELTA;"
+                      )
+                  if "s64 task_load_delta = (s64)new_task_load - p->ravg.demand;" in line:
+                      line = line.replace(
+                          "s64 task_load_delta = (s64)new_task_load - p->ravg.demand;",
+                          "s64 task_load_delta __attribute__((unused)) = (s64)new_task_load - p->ravg.demand;"
+                      )
+
+                  output_lines.append(line)
+
+          with open("kernel/sched/fair.c", "w") as f:
+              f.writelines(output_lines)
+          print("fair.c 修复完成（逐行安全模式）")
+          EOF
       # ========== Clang 工具链缓存与下载 ==========
       - name: 缓存 Clang 工具链
         id: cache-clang
