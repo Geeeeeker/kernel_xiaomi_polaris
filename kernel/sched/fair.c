@@ -11964,8 +11964,7 @@ const struct sched_class fair_sched_class = {
 #endif
 #ifdef CONFIG_SCHED_WALT
 	.fixup_walt_sched_stats	= walt_fixup_sched_stats_fair,
-	.fixup_cumulative_runnable_avg =
-		walt_fixup_cumulative_runnable_avg_fair,
+	/* .fixup_cumulative_runnable_avg = walt_fixup_cumulative_runnable_avg_fair, */
 #endif
 };
 
@@ -12047,9 +12046,7 @@ static void walt_inc_throttled_cfs_rq_stats(struct walt_sched_stats *stats,
 	struct rq *rq = rq_of(tcfs_rq);
 
 	stats->nr_big_tasks += tcfs_rq->walt_stats.nr_big_tasks;
-	fixup_cumulative_runnable_avg(stats,
-				tcfs_rq->walt_stats.cumulative_runnable_avg,
-				tcfs_rq->walt_stats.pred_demands_sum);
+	/* fixup_cumulative_runnable_avg removed */
 
 	if (stats == &rq->walt_stats)
 		walt_fixup_cum_window_demand(rq,
@@ -12063,9 +12060,7 @@ static void walt_dec_throttled_cfs_rq_stats(struct walt_sched_stats *stats,
 	struct rq *rq = rq_of(tcfs_rq);
 
 	stats->nr_big_tasks -= tcfs_rq->walt_stats.nr_big_tasks;
-	fixup_cumulative_runnable_avg(stats,
-				-tcfs_rq->walt_stats.cumulative_runnable_avg,
-				-tcfs_rq->walt_stats.pred_demands_sum);
+	/* fixup_cumulative_runnable_avg removed */
 
 	/*
 	 * We remove the throttled cfs_rq's tasks's contribution from the
@@ -12083,17 +12078,21 @@ static void walt_fixup_sched_stats_fair(struct rq *rq, struct task_struct *p,
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	s64 task_load_delta = (s64)new_task_load - task_load(p);
-	s64 pred_demand_delta = PRED_DEMAND_DELTA;
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
 
-		fixup_cumulative_runnable_avg(&cfs_rq->walt_stats,
-					      task_load_delta,
-					      pred_demand_delta);
+		/* fixup_cumulative_runnable_avg removed */
 		if (cfs_rq_throttled(cfs_rq))
 			break;
 	}
+
+	/* Fix up rq->walt_stats only if we didn't find any throttled cfs_rq */
+	if (!se) {
+		/* fixup_cumulative_runnable_avg removed */
+		walt_fixup_cum_window_demand(rq, task_load_delta);
+	}
+}
 
 	/* Fix up rq->walt_stats only if we didn't find any throttled cfs_rq */
 	if (!se) {
