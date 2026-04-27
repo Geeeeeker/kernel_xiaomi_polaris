@@ -102,24 +102,67 @@ jobs:
             -o arch/arm64/configs/polaris_defconfig
 
       # ========== 源码快速修复 ==========
-      - name: 修复 fair.c 中 cumulative_runnable_avg 错误
+      # ========== 源码快速修复 ==========
+      - name: 彻底修复 fair.c 中累积可运行平均相关错误（Python）
         working-directory: kernel
         run: |
-          # 1. 删除所有 fixup_cumulative_runnable_avg 调用（单行情况），替换为注释+分号
-          sed -i '/fixup_cumulative_runnable_avg\s*(/s/.*/\/\* fixup_cumulative_runnable_avg removed \*\/;/' kernel/sched/fair.c
+          python3 << 'EOF'
+          import re
+          with open("kernel/sched/fair.c", "r") as f:
+              content = f.read()
 
-          # 2. 注释掉 cfs_rq->cumulative_runnable_avg += ... 的直接赋值
-          sed -i '/cfs_rq->cumulative_runnable_avg\s*+=/s/^/\t\/\//' kernel/sched/fair.c
+          # 1. 删除所有 fixup_cumulative_runnable_avg(...); 调用（跨行）
+          content = re.sub(
+              r'fixup_cumulative_runnable_avg\s*\(.*?\)\s*;',
+              '/* fixup_cumulative_runnable_avg removed */;',
+              content,
+              flags=re.DOTALL
+          )
 
-          # 3. 注释掉结构体中的 .fixup_cumulative_runnable_avg = 以及下一行
-          sed -i '/\.fixup_cumulative_runnable_avg\s*=/,+1 s/^/\t\/\//' kernel/sched/fair.c
+          # 2. 注释掉 cfs_rq->cumulative_runnable_avg += ... 的赋值行
+          content = re.sub(
+              r'^(\s*)(cfs_rq->cumulative_runnable_avg\s*\+=\s*[^;]*;)',
+              r'\1/* \2 */',
+              content,
+              flags=re.MULTILINE
+          )
 
-          # 4. 抑制未使用变量 pred_demand_delta
-          sed -i '/s64 pred_demand_delta = PRED_DEMAND_DELTA;/a\    (void)pred_demand_delta;' kernel/sched/fair.c
+          # 3. 处理可能残留的错误行（如多余括号或 pred_demand 碎片）
+          #    删除独立的 "p->ravg.pred_demand);"、"-(s64)p->ravg.pred_demand);" 等
+          content = re.sub(
+              r'^\s*(p->ravg\.pred_demand\s*\)\s*;\s*)$',
+              r'/* \1 removed */',
+              content,
+              flags=re.MULTILINE
+          )
+          content = re.sub(
+              r'^\s*\(-\(s64\)p->ravg\.pred_demand\s*\)\s*;\s*$',
+              r'/* \1 removed */',
+              content,
+              flags=re.MULTILINE
+          )
+          content = re.sub(
+              r'^\s*tcfs_rq->walt_stats\.pred_demands_sum\s*\)\s*;\s*$',
+              r'/* \1 removed */',
+              content,
+              flags=re.MULTILINE
+          )
 
-          # 5. 抑制未使用变量 task_load_delta
-          sed -i '/s64 task_load_delta = (s64)new_task_load - p->ravg.demand;/a\    (void)task_load_delta;' kernel/sched/fair.c
+          # 4. 给可能未使用的变量加上 attribute
+          content = re.sub(
+              r'(s64\s+pred_demand_delta\s*=\s*PRED_DEMAND_DELTA\s*;)',
+              r'\1 __attribute__((unused));',
+              content
+          )
+          content = re.sub(
+              r'(s64\s+task_load_delta\s*=\s*\(s64\)new_task_load\s*-\s*p->ravg\.demand\s*;)',
+              r'\1 __attribute__((unused));',
+              content
+          )
 
+          with open("kernel/sched/fair.c", "w") as f:
+              f.write(content)
+          EOF
       # ========== Clang 工具链缓存与下载 ==========
       - name: 缓存 Clang 工具链
         id: cache-clang
