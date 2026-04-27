@@ -103,21 +103,36 @@ jobs:
 
       # ========== 源码快速修复 ==========
       # ========== 源码快速修复 ==========
-      - name: 修复 fair.c 中 cumulative_runnable_avg 错误及 walt_ 残留
+      - name: 彻底删除 fair.c 中所有 fixup_cumulative_runnable_avg 调用及相关赋值
         working-directory: kernel
         run: |
-          # 1. 在 #include "walt.h" 之后添加空宏，移除所有 fixup_cumulative_runnable_avg 调用
-          sed -i '/^#include "walt.h"/a #define fixup_cumulative_runnable_avg(...)' kernel/sched/fair.c
-
-          # 2. 注释掉 cfs_rq->cumulative_runnable_avg += ... 的直接赋值语句
-          sed -i '/cfs_rq->cumulative_runnable_avg\s*+=/s/^/\t\/\//' kernel/sched/fair.c
-
-          # 3. 注释掉结构体初始化中残留的 .fixup_cumulative_runnable_avg 及下一行
-          sed -i '/\.fixup_cumulative_runnable_avg\s*=/,+1 s/^/\t\/\//' kernel/sched/fair.c
-
-          # 4. 消除因上述修改产生的未使用变量警告 (pred_demand_delta / task_load_delta)
-          sed -i '/s64 pred_demand_delta = PRED_DEMAND_DELTA;/a\    (void)pred_demand_delta;' kernel/sched/fair.c
-          sed -i '/s64 task_load_delta = (s64)new_task_load - p->ravg.demand;/a\    (void)task_load_delta;' kernel/sched/fair.c
+          python3 -c "
+          import re
+          with open('kernel/sched/fair.c', 'r') as f:
+              content = f.read()
+          # 删除所有 fixup_cumulative_runnable_avg(...); 调用（支持跨行）
+          content = re.sub(
+              r'fixup_cumulative_runnable_avg\s*\(.*?\)\s*;',
+              '',
+              content,
+              flags=re.DOTALL
+          )
+          # 注释掉 cfs_rq->cumulative_runnable_avg += ... 的赋值（如果还有）
+          content = re.sub(
+              r'^(\s*)(cfs_rq->cumulative_runnable_avg\s*\+=\s*[^;]*;)',
+              r'\1/* \2 */',
+              content,
+              flags=re.MULTILINE
+          )
+          # 注释掉残留的结构体 .fixup_cumulative_runnable_avg 及下一行（双保险）
+          content = re.sub(
+              r'(\t*)(\.fixup_cumulative_runnable_avg\s*=\s*\n\s*\w+;)',
+              r'\1/* .fixup_cumulative_runnable_avg removed */',
+              content
+          )
+          with open('kernel/sched/fair.c', 'w') as f:
+              f.write(content)
+          "
 
       # ========== Clang 工具链缓存与下载 ==========
       - name: 缓存 Clang 工具链
