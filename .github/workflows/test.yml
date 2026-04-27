@@ -102,10 +102,7 @@ jobs:
             -o arch/arm64/configs/polaris_defconfig
 
       # ========== 源码快速修复 ==========
-      - name: 修复 fair.c 中不存在的 cumulative_runnable_avg 成员
-        working-directory: kernel
-        run: |
-          sed -i '/cumulative_runnable_avg/s/^/\/\//' kernel/sched/fair.c
+
       # ========== Clang 工具链缓存与下载 ==========
       - name: 缓存 Clang 工具链
         id: cache-clang
