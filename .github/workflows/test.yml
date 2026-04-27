@@ -102,37 +102,23 @@ jobs:
             -o arch/arm64/configs/polaris_defconfig
 
       # ========== 源码快速修复 ==========
-      # ========== 源码快速修复 ==========
-      - name: 彻底删除 fair.c 中所有 fixup_cumulative_runnable_avg 调用及相关赋值
+      - name: 修复 fair.c 中 cumulative_runnable_avg 错误
         working-directory: kernel
         run: |
-          python3 -c "
-          import re
-          with open('kernel/sched/fair.c', 'r') as f:
-              content = f.read()
-          # 删除所有 fixup_cumulative_runnable_avg(...); 调用（支持跨行）
-          content = re.sub(
-              r'fixup_cumulative_runnable_avg\s*\(.*?\)\s*;',
-              '',
-              content,
-              flags=re.DOTALL
-          )
-          # 注释掉 cfs_rq->cumulative_runnable_avg += ... 的赋值（如果还有）
-          content = re.sub(
-              r'^(\s*)(cfs_rq->cumulative_runnable_avg\s*\+=\s*[^;]*;)',
-              r'\1/* \2 */',
-              content,
-              flags=re.MULTILINE
-          )
-          # 注释掉残留的结构体 .fixup_cumulative_runnable_avg 及下一行（双保险）
-          content = re.sub(
-              r'(\t*)(\.fixup_cumulative_runnable_avg\s*=\s*\n\s*\w+;)',
-              r'\1/* .fixup_cumulative_runnable_avg removed */',
-              content
-          )
-          with open('kernel/sched/fair.c', 'w') as f:
-              f.write(content)
-          "
+          # 1. 删除所有 fixup_cumulative_runnable_avg 调用（单行情况），替换为注释+分号
+          sed -i '/fixup_cumulative_runnable_avg\s*(/s/.*/\/\* fixup_cumulative_runnable_avg removed \*\/;/' kernel/sched/fair.c
+
+          # 2. 注释掉 cfs_rq->cumulative_runnable_avg += ... 的直接赋值
+          sed -i '/cfs_rq->cumulative_runnable_avg\s*+=/s/^/\t\/\//' kernel/sched/fair.c
+
+          # 3. 注释掉结构体中的 .fixup_cumulative_runnable_avg = 以及下一行
+          sed -i '/\.fixup_cumulative_runnable_avg\s*=/,+1 s/^/\t\/\//' kernel/sched/fair.c
+
+          # 4. 抑制未使用变量 pred_demand_delta
+          sed -i '/s64 pred_demand_delta = PRED_DEMAND_DELTA;/a\    (void)pred_demand_delta;' kernel/sched/fair.c
+
+          # 5. 抑制未使用变量 task_load_delta
+          sed -i '/s64 task_load_delta = (s64)new_task_load - p->ravg.demand;/a\    (void)task_load_delta;' kernel/sched/fair.c
 
       # ========== Clang 工具链缓存与下载 ==========
       - name: 缓存 Clang 工具链
