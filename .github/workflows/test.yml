@@ -98,7 +98,7 @@ jobs:
       - name: 使用统一的 polaris_defconfig (基于 fourteen-wip)
         working-directory: kernel
         run: |
-          curl -LSs https://raw.githubusercontent.com/Geeeeeker/kernel_xiaomi_polaris/refs/heads/fourteen-wip/arch/arm64/configs/polaris_defconfig \
+          curl -LSs https://raw.githubusercontent.com/Geeeeeker/kernel_xiaomi_polaris/refs/heads/thirteen-wip/arch/arm64/configs/polaris_defconfig \
             -o arch/arm64/configs/polaris_defconfig
 
       # ========== 源码快速修复 ==========
